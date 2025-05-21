@@ -24,12 +24,55 @@
         </ul>
       </div>
     </div>
-    
-    <div class="text-sm text-gray-300 mb-2">ラウンド {{ displayedRound }} / 5</div>
-    <div v-if="finalResult" class="text-4xl font-bold text-pink-400 text-center mt-6 animate-bounce">
-      {{ finalResult }}
+    <!-- 戦績表示：折りたたみ -->
+    <div class="mt-8">
+      <button
+        @click="showHistory = !showHistory"
+        class="px-3 py-1 bg-indigo-700 hover:bg-indigo-800 rounded text-white font-semibold"
+      >
+        {{ showHistory ? '戦績を隠す' : '過去の戦績を表示' }}
+      </button>
+
+      <div v-if="showHistory" class="mt-3 space-y-2">
+
+      <div v-if="gameHistory.length" class="mt-6 p-4 bg-gray-800 rounded shadow text-sm space-y-1">
+          <div class="text-lg font-bold text-white mb-2">📈 総合戦績</div>
+          <div>🎯 総ゲーム数：{{ totalGames }}</div>
+          <div>🏆 ゲーム勝利数：あなた {{ totalWins.player }}勝 / CPU {{ totalWins.cpu }}勝</div>
+          <div>⚖️ ゲーム勝率：{{ gameWinRate }}</div>
+          <div>🔢 ラウンド勝率：{{ roundWinRate }}</div>
+        </div>
+
+        <div
+          v-for="(game, index) in gameHistory"
+          :key="index"
+          class="bg-gray-800 px-4 py-2 rounded border border-gray-600 shadow"
+        >
+          <p class="text-sm font-mono text-gray-200">
+            🎮 Game {{ index + 1 }}：<span class="text-green-400">あなた {{ game.player }}勝</span> -
+            <span class="text-red-400">CPU {{ game.cpu }}勝</span> →
+            <span class="font-bold">{{ game.result }}</span>
+          </p>
+          
+        </div>
+        <div v-if="gameHistory.length === 0" class="text-sm text-gray-400">まだ戦績はありません。</div>
+      </div>
     </div>
-    <div class="text-sm text-gray-300 mb-2">あなたの勝ち：{{ winCount.player }} ／ CPUの勝ち：{{ winCount.cpu }}</div>
+    <!-- ラウンド数と勝敗表示 -->
+    <div class="flex flex-wrap gap-4 my-4">
+      <div class="bg-gray-800 px-4 py-2 rounded shadow text-center">
+        <div class="text-xs text-gray-400">ラウンド</div>
+        <div class="text-lg font-bold text-yellow-300">{{ displayedRound }} / 5</div>
+      </div>
+      <div class="bg-blue-800 px-4 py-2 rounded shadow text-center">
+        <div class="text-xs text-gray-300">あなたの勝ち</div>
+        <div class="text-lg font-bold text-blue-300">{{ winCount.player }}</div>
+      </div>
+      <div class="bg-red-800 px-4 py-2 rounded shadow text-center">
+        <div class="text-xs text-gray-300">CPUの勝ち</div>
+        <div class="text-lg font-bold text-red-300">{{ winCount.cpu }}</div>
+      </div>
+    </div>
 
   <!-- 場の表示：1枚目は「？」、2枚目から公開 -->
   <div class="text-2xl font-semibold mb-4">あなたのスコア：{{ lastScores.player }} ／ CPUのスコア：{{ lastScores.cpu }}</div>
@@ -120,6 +163,35 @@ const finalResult = ref('')       // 5回戦後の総合勝敗
 const showRules = ref(false)
 
 const gameHistory = ref([]) // 過去の戦績 [{ player: 3, cpu: 2 }, ...]
+const showHistory = ref(false)
+
+const totalGames = computed(() => gameHistory.value.length)
+
+const totalWins = computed(() => {
+  let player = 0
+  let cpu = 0
+  gameHistory.value.forEach(g => {
+    if (g.result === 'あなたの勝ち') player++
+    else if (g.result === 'CPUの勝ち') cpu++
+  })
+  return { player, cpu }
+})
+
+const gameWinRate = computed(() => {
+  if (totalGames.value === 0) return '0%'
+  return `${Math.round((totalWins.value.player / totalGames.value) * 100)}%`
+})
+
+const totalRounds = computed(() =>
+  gameHistory.value.reduce((acc, g) => acc + g.player + g.cpu, 0)
+)
+
+const roundWinRate = computed(() => {
+  const total = totalRounds.value
+  if (total === 0) return '0%'
+  const playerWins = gameHistory.value.reduce((acc, g) => acc + g.player, 0)
+  return `${Math.round((playerWins / total) * 100)}%`
+})
 
 const displayedRound = computed(() => {
   return Math.min(roundCount.value + 1, 5)
@@ -315,12 +387,21 @@ function nextRound() {
 }
 
 function resetGame() {
-  // 💾 現在の戦績を履歴に保存（5ラウンド終了時のみ）
+  // 現在の戦績を履歴に保存（5ラウンド終了時のみ）
   if (roundCount.value >= 5) {
-    gameHistory.value.push({ player: winCount.value.player, cpu: winCount.value.cpu })
+    let resultText = ''
+    if (winCount.value.player > winCount.value.cpu) resultText = 'あなたの勝ち'
+    else if (winCount.value.player < winCount.value.cpu) resultText = 'CPUの勝ち'
+    else resultText = '引き分け'
+
+    gameHistory.value.push({
+      player: winCount.value.player,
+      cpu: winCount.value.cpu,
+      result: resultText
+    })
   }
 
-  // 🔄 各種リセット処理
+  // 各種リセット処理
   usedPlayerCards.value = []
   usedCpuCards.value = []
   selectedThisRound.value = []
