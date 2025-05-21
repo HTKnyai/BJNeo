@@ -1,62 +1,63 @@
 <template>
   <div class="flex flex-col min-h-screen bg-gray-900 text-white p-4">
-    <!-- 勝敗カウント -->
-    <div class="text-sm text-gray-300 mb-2">
-      あなたの勝ち：{{ winCount.player }} ／ CPUの勝ち：{{ winCount.cpu }}
+    <div class="text-sm text-gray-300 mb-2">ラウンド {{ roundCount + 1 }} / 5</div>
+    <div v-if="finalResult" class="text-4xl font-bold text-pink-400 text-center mt-6 animate-bounce">
+      {{ finalResult }}
     </div>
+    <div class="text-sm text-gray-300 mb-2">あなたの勝ち：{{ winCount.player }} ／ CPUの勝ち：{{ winCount.cpu }}</div>
 
-    <!-- スコア・結果表示 -->
-    <div v-if="lastScores.player !== null" class="text-sm text-gray-300 mb-2">
-      あなたのスコア：{{ lastScores.player }} ／ CPUのスコア：{{ lastScores.cpu }}
-    </div>
-    <div v-if="roundResult" class="text-xl font-bold mb-2">
-      {{ roundResult }}
-    </div>
+  <!-- 場の表示：1枚目は「？」、2枚目から公開 -->
+  <div class="text-2xl font-semibold mb-4">あなたのスコア：{{ lastScores.player }} ／ CPUのスコア：{{ lastScores.cpu }}</div>
 
-    <!-- 場 -->
-    <div class="flex justify-center items-center gap-10 my-4">
-      <div class="text-center">
-        <h2 class="mb-1">あなたの場</h2>
-        <div v-for="(card, index) in currentPlayerCards" :key="index" class="px-4 py-2 bg-blue-600 rounded">
-          {{ card }}
-        </div>
-      </div>
-      <div class="text-center">
-        <h2 class="mb-1">CPUの場</h2>
-        <div v-for="(card, index) in currentCpuCards" :key="index" class="px-4 py-2 bg-red-600 rounded">
-          {{ card }}
-        </div>
+  <div v-if="roundResult" class="text-3xl font-bold text-yellow-400 mb-4 animate-pulse">
+    🏆 {{ roundResult }} 🏆
+  </div>
+
+
+  <!-- 場のカード -->
+  <div class="flex justify-center items-center gap-10 my-4">
+    <div class="text-center">
+      <h2 class="mb-1">あなたの場</h2>
+      <div v-for="(card, index) in displayedPlayerCards" :key="index" class="px-6 py-3 bg-blue-600 rounded text-xl">
+        {{ card }}
       </div>
     </div>
+    <div class="text-center">
+      <h2 class="mb-1">CPUの場</h2>
+      <div v-for="(card, index) in displayedCpuCards" :key="index" class="px-6 py-3 bg-red-600 rounded text-xl">
+        {{ card }}
+      </div>
+    </div>
+  </div>
 
-    <!-- 手札 -->
+    <!-- あなたの手札 -->
     <div class="mt-auto">
-      <h2 class="text-lg font-semibold mb-2">あなたの手札（クリックで選択）</h2>
+      <h2 class="text-lg font-semibold mb-2">あなたの手札</h2>
       <div class="flex flex-wrap gap-2">
         <button
           v-for="card in availablePlayerCards"
           :key="card"
-          @click="toggleCardSelection(card)"
-          :class="[
-            'px-4 py-2 rounded text-sm font-semibold transition duration-200',
-            selectedPlayerCards.includes(card)
-              ? 'bg-yellow-400 text-black scale-110 ring-4 ring-yellow-300'
-              : 'bg-blue-500 hover:bg-blue-600 text-white'
-          ]"
+          :disabled="usedPlayerCards.includes(card) || selectedThisRound.includes(card)"
+          @click="selectCard(card)"
+          class="px-4 py-2 rounded transition duration-200"
+          :class="{
+            'bg-yellow-400 text-black ring-2 ring-yellow-300': selectedThisRound.includes(card),
+            'bg-blue-500 hover:bg-blue-600': !selectedThisRound.includes(card)
+          }"
         >
           {{ card }}
         </button>
       </div>
     </div>
 
-    <!-- 操作ボタン -->
+    <!-- 操作 -->
     <div class="mt-4 flex gap-4">
       <button
-        @click="startNewRound"
+        v-if="showNextButton && roundCount < 5"
+        @click="nextRound"
         class="px-4 py-2 bg-green-600 rounded hover:bg-green-700"
-        :disabled="selectedPlayerCards.length !== 3 || roundCount >= 5"
       >
-        ラウンド開始
+        次のラウンドへ
       </button>
       <button
         v-if="roundCount >= 5"
@@ -75,33 +76,116 @@ import { ref, computed } from 'vue'
 const fullDeck = ['0','1','2','3','4','5','6','7','8','9','10','x2','x3','交換','打ち消し']
 const usedPlayerCards = ref([])
 const usedCpuCards = ref([])
-const selectedPlayerCards = ref([])
-const currentPlayerCards = ref([])
-const currentCpuCards = ref([])
+
+const selectedThisRound = ref([])
+const playerCards = ref([])
+const cpuCards = ref([])
+const displayedPlayerCards = ref([])
+const displayedCpuCards = ref([])
 
 const roundResult = ref('')
 const lastScores = ref({ player: null, cpu: null })
 const roundCount = ref(0)
 const winCount = ref({ player: 0, cpu: 0 })
 
+const showNextButton = ref(false) // 次ラウンド進行ボタンの表示制御
+const isRoundLocked = ref(false)  // 勝敗処理中はtrue（カード選択不可）
+const finalResult = ref('')       // 5回戦後の総合勝敗
+
 const availablePlayerCards = computed(() =>
   fullDeck.filter(card => !usedPlayerCards.value.includes(card))
 )
 
-function toggleCardSelection(card) {
-  if (selectedPlayerCards.value.includes(card)) {
-    selectedPlayerCards.value = selectedPlayerCards.value.filter(c => c !== card)
-  } else if (selectedPlayerCards.value.length < 3) {
-    selectedPlayerCards.value.push(card)
-  }
-}
-
-function drawCpuHand() {
+function drawCpuCard() {
   const available = fullDeck.filter(c => !usedCpuCards.value.includes(c))
   const shuffled = [...available].sort(() => Math.random() - 0.5)
-  const hand = shuffled.slice(0, 3)
-  usedCpuCards.value.push(...hand)
-  return hand
+  return shuffled[0]
+}
+
+function selectCard(card) {
+  if (
+    isRoundLocked.value ||
+    selectedThisRound.value.includes(card) ||
+    usedPlayerCards.value.includes(card)
+  ) return
+
+  if (selectedThisRound.value.includes(card) || usedPlayerCards.value.includes(card)) return
+
+  selectedThisRound.value.push(card)
+
+  if (selectedThisRound.value.length === 1) {
+    // 1枚目：伏せて出す
+    playerCards.value = [card]
+    cpuCards.value = [drawCpuCard()]
+    usedPlayerCards.value.push(card)
+    usedCpuCards.value.push(cpuCards.value[0])
+    displayedPlayerCards.value = ['？']
+    displayedCpuCards.value = ['？']
+
+  } else if (selectedThisRound.value.length === 2) {
+    // 2枚目：公開で出す
+    playerCards.value.push(card)
+    const cpu = drawCpuCard()
+    cpuCards.value.push(cpu)
+    usedPlayerCards.value.push(card)
+    usedCpuCards.value.push(cpu)
+    displayedPlayerCards.value.push(card)
+    displayedCpuCards.value.push(cpu)
+
+  } else if (selectedThisRound.value.length === 3) {
+    // 3枚目：出した後、少し待ってから全公開
+    playerCards.value.push(card)
+    const cpu = drawCpuCard()
+    cpuCards.value.push(cpu)
+    usedPlayerCards.value.push(card)
+    usedCpuCards.value.push(cpu)
+    displayedPlayerCards.value.push(card)
+    displayedCpuCards.value.push(cpu)
+
+    setTimeout(() => {
+      // 全公開
+      displayedPlayerCards.value[0] = playerCards.value[0]
+      displayedCpuCards.value[0] = cpuCards.value[0]
+
+      // スコア計算
+      const { playerScore, cpuScore } = calculateFinalScores(playerCards.value, cpuCards.value)
+      lastScores.value = { player: playerScore, cpu: cpuScore }
+
+      // 勝敗表示
+      if (playerScore > 21 && cpuScore > 21) {
+        roundResult.value = '両者バースト'
+      } else if (playerScore > 21) {
+        roundResult.value = 'CPUの勝ち'
+        winCount.value.cpu++
+      } else if (cpuScore > 21) {
+        roundResult.value = 'あなたの勝ち'
+        winCount.value.player++
+      } else if (playerScore > cpuScore) {
+        roundResult.value = 'あなたの勝ち'
+        winCount.value.player++
+      } else if (playerScore < cpuScore) {
+        roundResult.value = 'CPUの勝ち'
+        winCount.value.cpu++
+      } else {
+        roundResult.value = '引き分け'
+      }
+
+      roundCount.value++
+      selectedThisRound.value = []
+      showNextButton.value = true
+
+      if (roundCount.value >= 5) {
+        if (winCount.value.player > winCount.value.cpu) {
+          finalResult.value = '🎉 あなたの勝ち！ 🎉'
+        } else if (winCount.value.player < winCount.value.cpu) {
+          finalResult.value = '😈 CPUの勝ち 😈'
+        } else {
+          finalResult.value = '🤝 引き分け 🤝'
+        }
+      }
+
+    }, 1000)  // ← 一瞬の間
+  }
 }
 
 function calculateFinalScores(playerHand, cpuHand) {
@@ -138,7 +222,7 @@ function calculateFinalScores(playerHand, cpuHand) {
   const cpuHasSwap = effectiveCpuHand.includes('交換')
 
   if (playerHasSwap && cpuHasSwap) {
-    // 交換同士→打ち消し扱い
+    // 相殺
   } else if (playerHasSwap) {
     [playerScore, cpuScore] = [cpuScore, playerScore]
   } else if (cpuHasSwap) {
@@ -148,54 +232,32 @@ function calculateFinalScores(playerHand, cpuHand) {
   return { playerScore, cpuScore }
 }
 
-function startNewRound() {
-  if (selectedPlayerCards.value.length !== 3) return
-
-  const playerHand = [...selectedPlayerCards.value]
-  const cpuHand = drawCpuHand()
-
-  currentPlayerCards.value = [...playerHand]
-  currentCpuCards.value = [...cpuHand]
-
-  usedPlayerCards.value.push(...playerHand)
-  selectedPlayerCards.value = []
-
-  const { playerScore, cpuScore } = calculateFinalScores(playerHand, cpuHand)
-  lastScores.value = { player: playerScore, cpu: cpuScore }
-
-  if (playerScore > 21 && cpuScore > 21) {
-    roundResult.value = '両者バースト'
-  } else if (playerScore > 21) {
-    roundResult.value = 'CPUの勝ち'
-    winCount.value.cpu++
-  } else if (cpuScore > 21) {
-    roundResult.value = 'あなたの勝ち'
-    winCount.value.player++
-  } else if (playerScore > cpuScore) {
-    roundResult.value = 'あなたの勝ち'
-    winCount.value.player++
-  } else if (playerScore < cpuScore) {
-    roundResult.value = 'CPUの勝ち'
-    winCount.value.cpu++
-  } else {
-    roundResult.value = '引き分け'
-  }
-
-  roundCount.value++
-  if (roundCount.value >= 5) {
-    roundResult.value += '（5回勝負終了）'
-  }
+function nextRound() {
+  selectedThisRound.value = []
+  playerCards.value = []
+  cpuCards.value = []
+  displayedPlayerCards.value = []
+  displayedCpuCards.value = []
+  lastScores.value = { player: null, cpu: null }
+  roundResult.value = ''
+  showNextButton.value = false
+  isRoundLocked.value = false
 }
 
 function resetGame() {
   usedPlayerCards.value = []
   usedCpuCards.value = []
-  selectedPlayerCards.value = []
-  currentPlayerCards.value = []
-  currentCpuCards.value = []
+  selectedThisRound.value = []
+  playerCards.value = []
+  cpuCards.value = []
+  displayedPlayerCards.value = []
+  displayedCpuCards.value = []
   lastScores.value = { player: null, cpu: null }
   roundCount.value = 0
   roundResult.value = ''
   winCount.value = { player: 0, cpu: 0 }
+  finalResult.value = '' // ← これが必要！
+  isRoundLocked.value = false
+  showNextButton.value = false
 }
 </script>
