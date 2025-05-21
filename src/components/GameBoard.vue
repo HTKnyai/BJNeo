@@ -1,6 +1,6 @@
 <template>
   <div class="flex flex-col min-h-screen bg-gray-900 text-white p-4">
-    <div class="text-sm text-gray-300 mb-2">ラウンド {{ roundCount + 1 }} / 5</div>
+    <div class="text-sm text-gray-300 mb-2">ラウンド {{ displayedRound }} / 5</div>
     <div v-if="finalResult" class="text-4xl font-bold text-pink-400 text-center mt-6 animate-bounce">
       {{ finalResult }}
     </div>
@@ -92,6 +92,10 @@ const showNextButton = ref(false) // 次ラウンド進行ボタンの表示制�
 const isRoundLocked = ref(false)  // 勝敗処理中はtrue（カード選択不可）
 const finalResult = ref('')       // 5回戦後の総合勝敗
 
+const displayedRound = computed(() => {
+  return Math.min(roundCount.value + 1, 5)
+})
+
 const availablePlayerCards = computed(() =>
   fullDeck.filter(card => !usedPlayerCards.value.includes(card))
 )
@@ -100,6 +104,39 @@ function drawCpuCard() {
   const available = fullDeck.filter(c => !usedCpuCards.value.includes(c))
   const shuffled = [...available].sort(() => Math.random() - 0.5)
   return shuffled[0]
+}
+
+function drawCpuCardSmart(cpuCardsSoFar) {
+  const available = fullDeck.filter(c => !usedCpuCards.value.includes(c))
+
+  // 手札0枚目 → 中～小の数値カードを優先（バースト防止）
+  if (cpuCardsSoFar.length === 0) {
+    const nums = available.filter(c => !isNaN(c)).map(c => Number(c))
+    const safeNums = nums.filter(n => n <= 7)
+    const card = safeNums.length ? String(safeNums[Math.floor(Math.random() * safeNums.length)]) : randomChoice(available)
+    return card
+  }
+
+  // 手札1枚目 → 合計を見て調整（x2, x3 温存）
+  if (cpuCardsSoFar.length === 1) {
+    const score = Number(cpuCardsSoFar[0])
+    if (score <= 7 && available.includes('10')) return '10'
+    if (available.includes('x2') && score <= 7) return 'x2'
+    return randomChoice(available)
+  }
+
+  // 手札2枚目 → 交換や打ち消しを混ぜる判断
+  if (cpuCardsSoFar.length === 2) {
+    if (available.includes('打ち消し') && Math.random() < 0.5) return '打ち消し'
+    if (available.includes('交換') && Math.random() < 0.3) return '交換'
+    return randomChoice(available)
+  }
+
+  return randomChoice(available)
+}
+
+function randomChoice(arr) {
+  return arr[Math.floor(Math.random() * arr.length)]
 }
 
 function selectCard(card) {
@@ -116,16 +153,16 @@ function selectCard(card) {
   if (selectedThisRound.value.length === 1) {
     // 1枚目：伏せて出す
     playerCards.value = [card]
-    cpuCards.value = [drawCpuCard()]
+    const cpu = drawCpuCardSmart(cpuCards.value)
+    cpuCards.value = [cpu]  // ✅ 必ずここで代入
     usedPlayerCards.value.push(card)
-    usedCpuCards.value.push(cpuCards.value[0])
+    usedCpuCards.value.push(cpu)  // ✅ 正しくpush
     displayedPlayerCards.value = ['？']
     displayedCpuCards.value = ['？']
-
   } else if (selectedThisRound.value.length === 2) {
     // 2枚目：公開で出す
     playerCards.value.push(card)
-    const cpu = drawCpuCard()
+    const cpu = drawCpuCardSmart(cpuCards.value)
     cpuCards.value.push(cpu)
     usedPlayerCards.value.push(card)
     usedCpuCards.value.push(cpu)
@@ -135,7 +172,7 @@ function selectCard(card) {
   } else if (selectedThisRound.value.length === 3) {
     // 3枚目：出した後、少し待ってから全公開
     playerCards.value.push(card)
-    const cpu = drawCpuCard()
+    const cpu = drawCpuCardSmart(cpuCards.value)
     cpuCards.value.push(cpu)
     usedPlayerCards.value.push(card)
     usedCpuCards.value.push(cpu)
@@ -170,7 +207,11 @@ function selectCard(card) {
         roundResult.value = '引き分け'
       }
 
-      roundCount.value++
+      // ラウンド数が5未満のときのみインクリメント
+      if (roundCount.value < 5) {
+        roundCount.value++
+      }
+      
       selectedThisRound.value = []
       showNextButton.value = true
 
