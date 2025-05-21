@@ -25,7 +25,7 @@
       </div>
     </div>
     <!-- 戦績表示：折りたたみ -->
-    <div class="mt-8">
+    <div class="mt-1">
       <button
         @click="showHistory = !showHistory"
         class="px-3 py-1 bg-indigo-700 hover:bg-indigo-800 rounded text-white font-semibold"
@@ -109,8 +109,8 @@
           @click="selectCard(card)"
           class="px-4 py-2 rounded transition duration-200"
           :class="{
-            'bg-yellow-400 text-black ring-2 ring-yellow-300': selectedThisRound.includes(card),
-            'bg-blue-500 hover:bg-blue-600': !selectedThisRound.includes(card)
+            'bg-yellow-400 text-black ring-2 ring-yellow-300': tempSelectedCard === card,
+            'bg-blue-500 hover:bg-blue-600': tempSelectedCard !== card
           }"
         >
           {{ card }}
@@ -166,6 +166,8 @@ const gameHistory = ref([]) // 過去の戦績 [{ player: 3, cpu: 2 }, ...]
 const showHistory = ref(false)
 
 const totalGames = computed(() => gameHistory.value.length)
+
+const tempSelectedCard = ref(null) // 仮選択中のカード
 
 const totalWins = computed(() => {
   let player = 0
@@ -241,55 +243,52 @@ function randomChoice(arr) {
 }
 
 function selectCard(card) {
+  // 選択済み・使用済みカードは無視
   if (
     isRoundLocked.value ||
-    selectedThisRound.value.includes(card) ||
     usedPlayerCards.value.includes(card)
   ) return
 
-  if (selectedThisRound.value.includes(card) || usedPlayerCards.value.includes(card)) return
+  // すでに仮選択されていて、再度クリックしたら決定
+  if (tempSelectedCard.value === card) {
+    // 決定して出す
+    handleCardPlay(card)
+    tempSelectedCard.value = null
+    return
+  }
 
+  // まだ仮選択されていない → 一時選択
+  tempSelectedCard.value = card
+}
+
+function handleCardPlay(card) {
   selectedThisRound.value.push(card)
+  usedPlayerCards.value.push(card)
+
+  // CPUのカードを選ぶ
+  const cpu = drawCpuCardSmart(cpuCards.value)
+  cpuCards.value.push(cpu)
+  usedCpuCards.value.push(cpu)
 
   if (selectedThisRound.value.length === 1) {
-    // 1枚目：伏せて出す
     playerCards.value = [card]
-    const cpu = drawCpuCardSmart(cpuCards.value)
-    cpuCards.value = [cpu]  // ✅ 必ずここで代入
-    usedPlayerCards.value.push(card)
-    usedCpuCards.value.push(cpu)  // ✅ 正しくpush
     displayedPlayerCards.value = ['？']
+    cpuCards.value = [cpu]
     displayedCpuCards.value = ['？']
-  } else if (selectedThisRound.value.length === 2) {
-    // 2枚目：公開で出す
+  } else {
     playerCards.value.push(card)
-    const cpu = drawCpuCardSmart(cpuCards.value)
-    cpuCards.value.push(cpu)
-    usedPlayerCards.value.push(card)
-    usedCpuCards.value.push(cpu)
     displayedPlayerCards.value.push(card)
     displayedCpuCards.value.push(cpu)
+  }
 
-  } else if (selectedThisRound.value.length === 3) {
-    // 3枚目：出した後、少し待ってから全公開
-    playerCards.value.push(card)
-    const cpu = drawCpuCardSmart(cpuCards.value)
-    cpuCards.value.push(cpu)
-    usedPlayerCards.value.push(card)
-    usedCpuCards.value.push(cpu)
-    displayedPlayerCards.value.push(card)
-    displayedCpuCards.value.push(cpu)
-
+  if (selectedThisRound.value.length === 3) {
+    isRoundLocked.value = true
     setTimeout(() => {
-      // 全公開
       displayedPlayerCards.value[0] = playerCards.value[0]
       displayedCpuCards.value[0] = cpuCards.value[0]
-
-      // スコア計算
       const { playerScore, cpuScore } = calculateFinalScores(playerCards.value, cpuCards.value)
       lastScores.value = { player: playerScore, cpu: cpuScore }
 
-      // 勝敗表示
       if (playerScore > 21 && cpuScore > 21) {
         roundResult.value = '両者バースト'
       } else if (playerScore > 21) {
@@ -308,25 +307,17 @@ function selectCard(card) {
         roundResult.value = '引き分け'
       }
 
-      // ラウンド数が5未満のときのみインクリメント
-      if (roundCount.value < 5) {
-        roundCount.value++
-      }
-      
-      selectedThisRound.value = []
+      if (roundCount.value < 5) roundCount.value++
       showNextButton.value = true
 
       if (roundCount.value >= 5) {
-        if (winCount.value.player > winCount.value.cpu) {
-          finalResult.value = '🎉 あなたの勝ち！ 🎉'
-        } else if (winCount.value.player < winCount.value.cpu) {
-          finalResult.value = '😈 CPUの勝ち 😈'
-        } else {
-          finalResult.value = '🤝 引き分け 🤝'
-        }
+        finalResult.value = winCount.value.player > winCount.value.cpu
+          ? '🎉 あなたの勝ち！ 🎉'
+          : winCount.value.player < winCount.value.cpu
+          ? '😈 CPUの勝ち 😈'
+          : '🤝 引き分け 🤝'
       }
-
-    }, 1000)  // ← 一瞬の間
+    }, 800)
   }
 }
 
