@@ -271,9 +271,14 @@ function handleCardPlay(card) {
   usedCpuCards.value.push(cpu)
 
   if (selectedThisRound.value.length === 1) {
+    // 1枚目：伏せて出す（ただし自分にはわかるように表示）
     playerCards.value = [card]
-    displayedPlayerCards.value = ['？']
+    const cpu = drawCpuCardSmart(cpuCards.value)
     cpuCards.value = [cpu]
+    usedPlayerCards.value.push(card)
+    usedCpuCards.value.push(cpu)
+    
+    displayedPlayerCards.value.push(card)
     displayedCpuCards.value = ['？']
   } else {
     playerCards.value.push(card)
