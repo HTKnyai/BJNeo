@@ -265,28 +265,33 @@ function handleCardPlay(card) {
   selectedThisRound.value.push(card)
   usedPlayerCards.value.push(card)
 
-  // CPUのカードを選ぶ
-  const cpu = drawCpuCardSmart(cpuCards.value)
-  cpuCards.value.push(cpu)
-  usedCpuCards.value.push(cpu)
-
   if (selectedThisRound.value.length === 1) {
-    // 1枚目：伏せて出す（ただし自分にはわかるように表示）
+    // 1枚目（伏せ）：自分とCPUそれぞれ1枚ずつ
     playerCards.value = [card]
-    const cpu = drawCpuCardSmart(cpuCards.value)
+    const cpu = drawCpuCardSmart([])
     cpuCards.value = [cpu]
-    usedPlayerCards.value.push(card)
     usedCpuCards.value.push(cpu)
-    
-    displayedPlayerCards.value.push(card)
+    displayedPlayerCards.value.push(card)  // 自分には表示する
     displayedCpuCards.value = ['？']
-  } else {
+
+  } else if (selectedThisRound.value.length === 2) {
+    // 2枚目（公開）：両者もう1枚
     playerCards.value.push(card)
+    const cpu = drawCpuCardSmart(cpuCards.value)
+    cpuCards.value.push(cpu)
+    usedCpuCards.value.push(cpu)
     displayedPlayerCards.value.push(card)
     displayedCpuCards.value.push(cpu)
-  }
 
-  if (selectedThisRound.value.length === 3) {
+  } else if (selectedThisRound.value.length === 3) {
+    // 3枚目（公開）：最後のカード
+    playerCards.value.push(card)
+    const cpu = drawCpuCardSmart(cpuCards.value)
+    cpuCards.value.push(cpu)
+    usedCpuCards.value.push(cpu)
+    displayedPlayerCards.value.push(card)
+    displayedCpuCards.value.push(cpu)
+
     isRoundLocked.value = true
     setTimeout(() => {
       displayedPlayerCards.value[0] = playerCards.value[0]
@@ -294,6 +299,7 @@ function handleCardPlay(card) {
       const { playerScore, cpuScore } = calculateFinalScores(playerCards.value, cpuCards.value)
       lastScores.value = { player: playerScore, cpu: cpuScore }
 
+      // 勝敗
       if (playerScore > 21 && cpuScore > 21) {
         roundResult.value = '両者バースト'
       } else if (playerScore > 21) {
