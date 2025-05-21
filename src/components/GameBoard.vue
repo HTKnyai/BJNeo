@@ -1,5 +1,30 @@
 <template>
   <div class="flex flex-col min-h-screen bg-gray-900 text-white p-4">
+    <!-- ルール説明：折りたたみ可能 -->
+    <div class="mb-4">
+      <button
+        @click="showRules = !showRules"
+        class="px-3 py-1 bg-purple-700 hover:bg-purple-800 rounded text-white font-semibold"
+      >
+        {{ showRules ? 'ルールを隠す' : 'ルールを表示' }}
+      </button>
+
+      <div v-if="showRules" class="mt-2 p-3 bg-purple-100 text-black rounded shadow">
+        <h2 class="font-bold text-lg mb-2">📜 ゲームルール</h2>
+        <ul class="list-disc list-inside text-sm space-y-1">
+          <li>ブラックジャックがモチーフのゲームです。</li>
+          <li>プレイヤーとCPUはそれぞれ3枚のカードを出します。</li>
+          <li>カードは各プレイヤーごとに一度ずつ使えます。</li>
+          <li>1枚目は伏せ札、2・3枚目は公開されます。</li>
+          <li>カードの合計点が21に近い方が勝ち（越えるとバースト負け）</li>
+          <li>魔法カード：<code>x2</code> や <code>x3</code> は合計点を倍増</li>
+          <li>魔法カード：<code>交換</code>はスコアを入れ替える</li>
+          <li>魔法カード：<code>打ち消し</code>は相手の魔法カードを無効化</li>
+          <li>全5ラウンド、勝利数が多い方が勝ち！</li>
+        </ul>
+      </div>
+    </div>
+    
     <div class="text-sm text-gray-300 mb-2">ラウンド {{ displayedRound }} / 5</div>
     <div v-if="finalResult" class="text-4xl font-bold text-pink-400 text-center mt-6 animate-bounce">
       {{ finalResult }}
@@ -91,6 +116,10 @@ const winCount = ref({ player: 0, cpu: 0 })
 const showNextButton = ref(false) // 次ラウンド進行ボタンの表示制御
 const isRoundLocked = ref(false)  // 勝敗処理中はtrue（カード選択不可）
 const finalResult = ref('')       // 5回戦後の総合勝敗
+
+const showRules = ref(false)
+
+const gameHistory = ref([]) // 過去の戦績 [{ player: 3, cpu: 2 }, ...]
 
 const displayedRound = computed(() => {
   return Math.min(roundCount.value + 1, 5)
@@ -286,6 +315,12 @@ function nextRound() {
 }
 
 function resetGame() {
+  // 💾 現在の戦績を履歴に保存（5ラウンド終了時のみ）
+  if (roundCount.value >= 5) {
+    gameHistory.value.push({ player: winCount.value.player, cpu: winCount.value.cpu })
+  }
+
+  // 🔄 各種リセット処理
   usedPlayerCards.value = []
   usedCpuCards.value = []
   selectedThisRound.value = []
@@ -297,7 +332,7 @@ function resetGame() {
   roundCount.value = 0
   roundResult.value = ''
   winCount.value = { player: 0, cpu: 0 }
-  finalResult.value = '' // ← これが必要！
+  finalResult.value = ''
   isRoundLocked.value = false
   showNextButton.value = false
 }
