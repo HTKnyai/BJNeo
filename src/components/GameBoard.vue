@@ -118,6 +118,19 @@
       </div>
     </div>
 
+    <!-- 🎯 ゲーム最終結果表示 -->
+    <div
+      v-if="finalResult"
+      class="text-5xl font-bold text-center mb-6 animate-bounce"
+      :class="{
+        'text-green-400': finalResult.includes('あなたの勝ち'),
+        'text-red-400': finalResult.includes('CPUの勝ち'),
+        'text-yellow-400': finalResult.includes('引き分け')
+      }"
+    >
+      {{ finalResult }}
+    </div>
+
     <!-- 操作 -->
     <div class="mt-4 flex gap-4">
       <button
@@ -140,6 +153,7 @@
 
 <script setup>
 import { ref, computed } from 'vue'
+import { drawCpuCardSmart } from '../logic/cpuAI.js'
 
 const fullDeck = ['0','1','2','3','4','5','6','7','8','9','10','x2','x3','交換','打ち消し']
 const usedPlayerCards = ref([])
@@ -224,76 +238,6 @@ function simulateScore(hand) {
   return total
 }
 
-function drawCpuCardSmart(cpuCardsSoFar) {
-  const available = fullDeck.filter(c => !usedCpuCards.value.includes(c))
-  const numericAvailable = available.filter(c => !isNaN(c)).map(Number)
-  const magicAvailable = available.filter(c => isNaN(c))
-  const currentScore = simulateScore(cpuCardsSoFar)
-
-  const remainingSlots = 3 - cpuCardsSoFar.length
-
-  const safeNumericCards = numericAvailable.filter(n => simulateScore([...cpuCardsSoFar, String(n)]) <= 21)
-
-  // 1枚目（様子見）：できるだけ小さめ・安全なカード
-  if (cpuCardsSoFar.length === 0) {
-    const safeSmall = safeNumericCards.filter(n => n <= 6)
-    const pick = safeSmall.length ? safeSmall : safeNumericCards.length ? safeNumericCards : [1]
-    return String(randomChoice(pick))
-  }
-
-  // 2枚目（攻防バランス）：
-  if (cpuCardsSoFar.length === 1) {
-    const baseScore = simulateScore(cpuCardsSoFar)
-
-    // x2やx3を使ってもバーストしないなら積極的に出す
-    if (magicAvailable.includes('x2')) {
-      const tryScore = simulateScore([...cpuCardsSoFar, 'x2'])
-      if (tryScore <= 21) return 'x2'
-    }
-
-    if (magicAvailable.includes('x3')) {
-      const tryScore = simulateScore([...cpuCardsSoFar, 'x3'])
-      if (tryScore <= 21) return 'x3'
-    }
-
-    if (safeNumericCards.length) {
-      // スコア10以上に乗せられそうなカードを優先
-      const goodNums = safeNumericCards.filter(n => simulateScore([...cpuCardsSoFar, String(n)]) >= 10)
-      return String(randomChoice(goodNums.length ? goodNums : safeNumericCards))
-    }
-
-    // 数字が危険 → 打ち消しや交換で逃げ
-    if (magicAvailable.includes('打ち消し')) return '打ち消し'
-    if (magicAvailable.includes('交換')) return '交換'
-
-    return String(randomChoice(numericAvailable.length ? numericAvailable : [1]))
-  }
-
-  // 3枚目（最終判断）：
-  if (cpuCardsSoFar.length === 2) {
-    const candidates = [...numericAvailable.map(n => String(n)), ...magicAvailable]
-
-    // できるだけ高得点を狙うが、バーストは避ける
-    for (const c of candidates.sort(() => Math.random() - 0.5)) {
-      const tryScore = simulateScore([...cpuCardsSoFar, c])
-      if (tryScore <= 21) return c
-    }
-
-    // 全滅 → 交換 or 打ち消しで逃げ道があれば選ぶ
-    if (magicAvailable.includes('交換')) return '交換'
-    if (magicAvailable.includes('打ち消し')) return '打ち消し'
-
-    // 最悪1を出す
-    return '1'
-  }
-
-  return String(randomChoice(numericAvailable.length ? numericAvailable : [1]))
-}
-
-function randomChoice(arr) {
-  return arr[Math.floor(Math.random() * arr.length)]
-}
-
 function selectCard(card) {
   // 選択済み・使用済みカードは無視
   if (
@@ -320,7 +264,7 @@ function handleCardPlay(card) {
   if (selectedThisRound.value.length === 1) {
     // 1枚目（伏せ）：自分とCPUそれぞれ1枚ずつ
     playerCards.value = [card]
-    const cpu = drawCpuCardSmart([])
+    const cpu = drawCpuCardSmart([], usedCpuCards.value, fullDeck, simulateScore)
     cpuCards.value = [cpu]
     usedCpuCards.value.push(cpu)
     displayedPlayerCards.value.push(card)  // 自分には表示する
@@ -329,7 +273,7 @@ function handleCardPlay(card) {
   } else if (selectedThisRound.value.length === 2) {
     // 2枚目（公開）：両者もう1枚
     playerCards.value.push(card)
-    const cpu = drawCpuCardSmart(cpuCards.value)
+    const cpu = drawCpuCardSmart(cpuCards.value, usedCpuCards.value, fullDeck, simulateScore)
     cpuCards.value.push(cpu)
     usedCpuCards.value.push(cpu)
     displayedPlayerCards.value.push(card)
@@ -338,7 +282,7 @@ function handleCardPlay(card) {
   } else if (selectedThisRound.value.length === 3) {
     // 3枚目（公開）：最後のカード
     playerCards.value.push(card)
-    const cpu = drawCpuCardSmart(cpuCards.value)
+    const cpu = drawCpuCardSmart(cpuCards.value, usedCpuCards.value, fullDeck, simulateScore)
     cpuCards.value.push(cpu)
     usedCpuCards.value.push(cpu)
     displayedPlayerCards.value.push(card)
