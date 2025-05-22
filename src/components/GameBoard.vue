@@ -212,30 +212,64 @@ function drawCpuCard() {
 function drawCpuCardSmart(cpuCardsSoFar) {
   const available = fullDeck.filter(c => !usedCpuCards.value.includes(c))
 
-  // 手札0枚目 → 中～小の数値カードを優先（バースト防止）
+  // 現在の合計点と倍化を試算
+  const currentTotal = calculateBaseScore(cpuCardsSoFar)
+
+  const safeNumbers = available.filter(c => !isNaN(c))
+    .map(Number)
+    .filter(n => currentTotal + n <= 21)
+
+  // 手札0枚目：小さめの数字で安全にスタート
   if (cpuCardsSoFar.length === 0) {
-    const nums = available.filter(c => !isNaN(c)).map(c => Number(c))
-    const safeNums = nums.filter(n => n <= 7)
-    const card = safeNums.length ? String(safeNums[Math.floor(Math.random() * safeNums.length)]) : randomChoice(available)
+    const lowNumbers = safeNumbers.filter(n => n <= 7)
+    const card = lowNumbers.length
+      ? String(lowNumbers[Math.floor(Math.random() * lowNumbers.length)])
+      : randomChoice(available)
     return card
   }
 
-  // 手札1枚目 → 合計を見て調整（x2, x3 温存）
+  // 手札1枚目：x2/x3を検討
   if (cpuCardsSoFar.length === 1) {
-    const score = Number(cpuCardsSoFar[0])
-    if (score <= 7 && available.includes('10')) return '10'
-    if (available.includes('x2') && score <= 7) return 'x2'
-    return randomChoice(available)
+    const num = Number(cpuCardsSoFar[0])
+
+    if (available.includes('x2') && num * 2 <= 21 && Math.random() < 0.8) return 'x2'
+    if (available.includes('x3') && num * 3 <= 21 && Math.random() < 0.5) return 'x3'
+
+    // 数値で安全に伸ばす
+    const nextCard = safeNumbers.length
+      ? String(safeNumbers[Math.floor(Math.random() * safeNumbers.length)])
+      : randomChoice(available)
+    return nextCard
   }
 
-  // 手札2枚目 → 交換や打ち消しを混ぜる判断
+  // 手札2枚目：打ち消し or 交換を状況で使う
   if (cpuCardsSoFar.length === 2) {
-    if (available.includes('打ち消し') && Math.random() < 0.5) return '打ち消し'
+    if (available.includes('打ち消し') && Math.random() < 0.6) return '打ち消し'
     if (available.includes('交換') && Math.random() < 0.3) return '交換'
-    return randomChoice(available)
+
+    const lastSafe = safeNumbers.length
+      ? String(safeNumbers[Math.floor(Math.random() * safeNumbers.length)])
+      : randomChoice(available)
+    return lastSafe
   }
 
+  // 念のため fallback
   return randomChoice(available)
+}
+
+function calculateBaseScore(hand) {
+  let total = 0
+  let multiplier = 1
+  for (const card of hand) {
+    if (!isNaN(card)) {
+      total += parseInt(card)
+    } else if (card === 'x2') {
+      multiplier *= 2
+    } else if (card === 'x3') {
+      multiplier *= 3
+    }
+  }
+  return total * multiplier
 }
 
 function randomChoice(arr) {
