@@ -1,7 +1,7 @@
 <template>
   <div class="flex flex-col min-h-screen bg-gray-900 text-white p-4">
     <!-- ルール説明：折りたたみ可能 -->
-    <div class="mb-4">
+    <div class="mb-1">
       <button
         @click="showRules = !showRules"
         class="px-3 py-1 bg-purple-700 hover:bg-purple-800 rounded text-white font-semibold"
@@ -9,8 +9,8 @@
         {{ showRules ? 'ルールを隠す' : 'ルールを表示' }}
       </button>
 
-      <div v-if="showRules" class="mt-2 p-3 bg-purple-100 text-black rounded shadow">
-        <h2 class="font-bold text-lg mb-2">📜 ゲームルール</h2>
+      <div v-if="showRules" class="mt-1 p-3 bg-purple-100 text-black rounded shadow">
+        <h2 class="font-bold text-lg mb-2">ゲームルール</h2>
         <ul class="list-disc list-inside text-sm space-y-1">
           <li>ブラックジャックがモチーフのゲームです。</li>
           <li>プレイヤーとCPUはそれぞれ3枚のカードを出します。</li>
@@ -19,7 +19,7 @@
           <li>カードの合計点が21に近い方が勝ち（越えるとバースト負け）</li>
           <li>魔法カード：<code>x2</code> や <code>x3</code> は、それ以前に出した数字カードの合計を倍増</li>
           <li>魔法カード：<code>交換</code>はスコアを入れ替える</li>
-          <li>魔法カード：<code>打ち消し</code>は相手の魔法カードを無効化</li>
+          <li>魔法カード：<code>消去</code>は相手の魔法カードを無効化</li>
           <li>全5ラウンド、勝利数が多い方が勝ち！</li>
         </ul>
       </div>
@@ -37,10 +37,10 @@
 
       <div v-if="gameHistory.length" class="mt-6 p-4 bg-gray-800 rounded shadow text-sm space-y-1">
           <div class="text-lg font-bold text-white mb-2">📈 総合戦績</div>
-          <div>🎯 総ゲーム数：{{ totalGames }}</div>
-          <div>🏆 ゲーム勝利数：あなた {{ totalWins.player }}勝 / CPU {{ totalWins.cpu }}勝</div>
-          <div>⚖️ ゲーム勝率：{{ gameWinRate }}</div>
-          <div>🔢 ラウンド勝率：{{ roundWinRate }}</div>
+          <div>総ゲーム数：{{ totalGames }}</div>
+          <div>ゲーム勝利数：あなた {{ totalWins.player }}勝 / CPU {{ totalWins.cpu }}勝</div>
+          <div>ゲーム勝率：{{ gameWinRate }}</div>
+          <div>ラウンド勝率：{{ roundWinRate }}</div>
         </div>
 
         <div
@@ -59,7 +59,7 @@
       </div>
     </div>
     <!-- ラウンド数と勝敗表示 -->
-    <div class="flex flex-wrap gap-4 my-4">
+    <div class="flex flex-wrap gap-4 my-2">
       <div class="bg-gray-800 px-4 py-2 rounded shadow text-center">
         <div class="text-xs text-gray-400">ラウンド</div>
         <div class="text-lg font-bold text-yellow-300">{{ displayedRound }} / 5</div>
@@ -74,32 +74,71 @@
       </div>
     </div>
 
-  <!-- 場の表示：1枚目は「？」、2枚目から公開 -->
-  <div class="text-2xl font-semibold mb-4">あなたのスコア：{{ lastScores.player }} ／ CPUのスコア：{{ lastScores.cpu }}</div>
-
-  <div v-if="roundResult" class="text-3xl font-bold text-yellow-400 mb-4 animate-pulse">
-    🏆 {{ roundResult }} 🏆
-  </div>
-
-
-  <!-- 場のカード -->
-  <div class="flex justify-center items-center gap-10 my-4">
-    <div class="text-center">
-      <h2 class="mb-1">あなたの場</h2>
-      <div v-for="(card, index) in displayedPlayerCards" :key="index" class="px-6 py-3 bg-blue-600 rounded text-xl">
-        {{ card }}
+    <!-- 場の表示：1枚目は「？」、2枚目から公開 -->
+    <div class="text-1xl font-semibold mb-4 space-y-1">
+      <div class="flex justify-between w-64">
+        <span>CPUのスコア</span>
+        <span>{{ lastScores.cpu }}</span>
+      </div>
+      <div class="flex justify-between w-64">
+        <span>あなたのスコア</span>
+        <span>{{ lastScores.player }}</span>
       </div>
     </div>
-    <div class="text-center">
-      <h2 class="mb-1">CPUの場</h2>
-      <div v-for="(card, index) in displayedCpuCards" :key="index" class="px-6 py-3 bg-red-600 rounded text-xl">
-        {{ card }}
+
+    <!-- 場のカード -->
+    <div class="relative flex flex-col items-center gap-1 my-0 min-h-[200px]">
+
+      <transition name="fade-scale">
+        <div
+          v-if="showRoundPopup || showFinalPopup"
+          class="absolute z-50 w-full flex justify-center"
+          style="top: 55%; transform: translateY(-50%); pointer-events: none;"
+        >
+          <div
+            class="font-bold shadow-xl text-center"
+            :class="[
+              showFinalPopup
+                ? 'text-4xl px-8 py-6 bg-white text-black rounded-2xl'
+                : 'text-2xl px-6 py-3 bg-yellow-400 text-black rounded-xl'
+            ]"
+          >
+            {{ showFinalPopup ? finalResult : `🏆 ${roundResult} 🏆` }}
+          </div>
+        </div>
+      </transition>
+
+      <!-- CPUの場 -->
+      <div class="text-center">
+        <h2 class="mb-1">CPUの場</h2>
+        <div class="flex justify-center gap-2 mt-1 min-h-16">
+          <div
+            v-for="(card, index) in displayedCpuCards"
+            :key="index"
+            :class="['card-style', 'bg-red-600 text-white']"
+          >
+            {{ card }}
+          </div>
+        </div>
+      </div>
+
+      <!-- あなたの場 -->
+      <div class="text-center">
+        <h2 class="mb-1">あなたの場</h2>
+        <div class="flex justify-center gap-2 mt-1 min-h-16">
+          <div
+            v-for="(card, index) in displayedPlayerCards"
+            :key="index"
+            :class="['card-style', 'bg-blue-600 text-white']"
+          >
+            {{ card }}
+          </div>
+        </div>
       </div>
     </div>
-  </div>
 
     <!-- あなたの手札 -->
-    <div class="mt-auto">
+    <div class="mt-2">
       <h2 class="text-lg font-semibold mb-2">あなたの手札</h2>
       <div class="flex flex-wrap gap-2">
         <button
@@ -107,30 +146,18 @@
           :key="card"
           :disabled="usedPlayerCards.includes(card) || selectedThisRound.includes(card)"
           @click="selectCard(card)"
-          class="px-4 py-2 rounded transition duration-200"
-          :class="{
-            'bg-yellow-400 text-black ring-2 ring-yellow-300': tempSelectedCard === card,
-            'bg-blue-500 hover:bg-blue-600': tempSelectedCard !== card
-          }"
+          :class="[
+            'card-style transition duration-200',
+            tempSelectedCard === card
+              ? 'bg-yellow-400 text-black ring-2 ring-yellow-300'
+              : 'bg-blue-500 hover:bg-blue-600 text-white'
+          ]"
         >
           {{ card }}
         </button>
       </div>
     </div>
-
-    <!-- 🎯 ゲーム最終結果表示 -->
-    <div
-      v-if="finalResult"
-      class="text-5xl font-bold text-center mb-6 animate-bounce"
-      :class="{
-        'text-green-400': finalResult.includes('あなたの勝ち'),
-        'text-red-400': finalResult.includes('CPUの勝ち'),
-        'text-yellow-400': finalResult.includes('引き分け')
-      }"
-    >
-      {{ finalResult }}
-    </div>
-
+  
     <!-- 操作 -->
     <div class="mt-4 flex gap-4">
       <button
@@ -155,7 +182,7 @@
 import { ref, computed } from 'vue'
 import { drawCpuCardSmart } from '../logic/cpuAI.js'
 
-const fullDeck = ['0','1','2','3','4','5','6','7','8','9','10','x2','x3','交換','打ち消し']
+const fullDeck = ['0','1','2','3','4','5','6','7','8','9','10','x2','x3','交換','消去']
 const usedPlayerCards = ref([])
 const usedCpuCards = ref([])
 
@@ -182,6 +209,9 @@ const showHistory = ref(false)
 const totalGames = computed(() => gameHistory.value.length)
 
 const tempSelectedCard = ref(null) // 仮選択中のカード
+
+const showRoundPopup = ref(false) // ラウンド勝敗ポップアップ表示
+const showFinalPopup = ref(false) // 総合勝敗ポップアップ表示
 
 const totalWins = computed(() => {
   let player = 0
@@ -295,7 +325,7 @@ function handleCardPlay(card) {
       const { playerScore, cpuScore } = calculateFinalScores(playerCards.value, cpuCards.value)
       lastScores.value = { player: playerScore, cpu: cpuScore }
 
-      // 勝敗
+      // 勝敗分岐
       if (playerScore > 21 && cpuScore > 21) {
         roundResult.value = '両者バースト'
       } else if (playerScore > 21) {
@@ -314,16 +344,35 @@ function handleCardPlay(card) {
         roundResult.value = '引き分け'
       }
 
-      if (roundCount.value < 5) roundCount.value++
-      showNextButton.value = true
+      // ポップアップ表示（ラウンド）
+      showRoundPopup.value = true
 
-      if (roundCount.value >= 5) {
-        finalResult.value = winCount.value.player > winCount.value.cpu
-          ? '🎉 あなたの勝ち！ 🎉'
-          : winCount.value.player < winCount.value.cpu
-          ? '😈 CPUの勝ち 😈'
-          : '🤝 引き分け 🤝'
-      }
+      setTimeout(() => {
+        showRoundPopup.value = false
+
+        // ✅ 次ラウンドボタンは「4回目まで表示」
+        if (roundCount.value < 4) {
+          showNextButton.value = true
+        }
+
+        // ✅ ラウンド数をここで加算
+        roundCount.value++
+
+        if (roundCount.value >= 5) {
+          finalResult.value = winCount.value.player > winCount.value.cpu
+            ? '🎉 あなたの勝ち！ 🎉'
+            : winCount.value.player < winCount.value.cpu
+            ? '😈 CPUの勝ち 😈'
+            : '🤝 引き分け 🤝'
+
+          setTimeout(() => {
+            showFinalPopup.value = true
+            setTimeout(() => {
+              showFinalPopup.value = false
+            }, 5000)
+          }, 300)
+        }
+      }, 1200)
     }, 800)
   }
 }
@@ -339,15 +388,15 @@ function evaluateScore(cards) {
     } else if (card === 'x3') {
       score *= 3
     }
-    // '交換' や '打ち消し' はここでは考慮しない（別処理）
+    // '交換' や '消去' はここでは考慮しない（別処理）
   }
 
   return score
 }
 
 function calculateFinalScores(playerHand, cpuHand) {
-  const playerHasNegate = playerHand.includes('打ち消し')
-  const cpuHasNegate = cpuHand.includes('打ち消し')
+  const playerHasNegate = playerHand.includes('消去')
+  const cpuHasNegate = cpuHand.includes('消去')
 
   const effectivePlayerHand = cpuHasNegate
     ? playerHand.filter(card => !['x2', 'x3', '交換'].includes(card))
