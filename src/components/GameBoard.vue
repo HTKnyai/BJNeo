@@ -17,7 +17,7 @@
           <li>カードは各プレイヤーごとに一度ずつ使えます。</li>
           <li>1枚目は伏せ札、2・3枚目は公開されます。</li>
           <li>カードの合計点が21に近い方が勝ち（越えるとバースト負け）</li>
-          <li>魔法カード：<code>x2</code> や <code>x3</code> は合計点を倍増</li>
+          <li>魔法カード：<code>x2</code> や <code>x3</code> は、それ以前に出した数字カードの合計を倍増</li>
           <li>魔法カード：<code>交換</code>はスコアを入れ替える</li>
           <li>魔法カード：<code>打ち消し</code>は相手の魔法カードを無効化</li>
           <li>全5ラウンド、勝利数が多い方が勝ち！</li>
@@ -203,73 +203,91 @@ const availablePlayerCards = computed(() =>
   fullDeck.filter(card => !usedPlayerCards.value.includes(card))
 )
 
-function drawCpuCard() {
-  const available = fullDeck.filter(c => !usedCpuCards.value.includes(c))
-  const shuffled = [...available].sort(() => Math.random() - 0.5)
-  return shuffled[0]
+function simulateScore(hand) {
+  // CPU戦略で使用するため、計算方式は上と同じ
+  let total = 0
+  let segment = 0
+
+  for (const card of hand) {
+    if (!isNaN(card)) {
+      segment += Number(card)
+    } else if (card === 'x2') {
+      total += segment * 2
+      segment = 0
+    } else if (card === 'x3') {
+      total += segment * 3
+      segment = 0
+    }
+  }
+
+  total += segment
+  return total
 }
 
 function drawCpuCardSmart(cpuCardsSoFar) {
   const available = fullDeck.filter(c => !usedCpuCards.value.includes(c))
+  const numericAvailable = available.filter(c => !isNaN(c)).map(Number)
+  const magicAvailable = available.filter(c => isNaN(c))
+  const currentScore = simulateScore(cpuCardsSoFar)
 
-  // 現在の合計点と倍化を試算
-  const currentTotal = calculateBaseScore(cpuCardsSoFar)
+  const remainingSlots = 3 - cpuCardsSoFar.length
 
-  const safeNumbers = available.filter(c => !isNaN(c))
-    .map(Number)
-    .filter(n => currentTotal + n <= 21)
+  const safeNumericCards = numericAvailable.filter(n => simulateScore([...cpuCardsSoFar, String(n)]) <= 21)
 
-  // 手札0枚目：小さめの数字で安全にスタート
+  // 1枚目（様子見）：できるだけ小さめ・安全なカード
   if (cpuCardsSoFar.length === 0) {
-    const lowNumbers = safeNumbers.filter(n => n <= 7)
-    const card = lowNumbers.length
-      ? String(lowNumbers[Math.floor(Math.random() * lowNumbers.length)])
-      : randomChoice(available)
-    return card
+    const safeSmall = safeNumericCards.filter(n => n <= 6)
+    const pick = safeSmall.length ? safeSmall : safeNumericCards.length ? safeNumericCards : [1]
+    return String(randomChoice(pick))
   }
 
-  // 手札1枚目：x2/x3を検討
+  // 2枚目（攻防バランス）：
   if (cpuCardsSoFar.length === 1) {
-    const num = Number(cpuCardsSoFar[0])
+    const baseScore = simulateScore(cpuCardsSoFar)
 
-    if (available.includes('x2') && num * 2 <= 21 && Math.random() < 0.8) return 'x2'
-    if (available.includes('x3') && num * 3 <= 21 && Math.random() < 0.5) return 'x3'
-
-    // 数値で安全に伸ばす
-    const nextCard = safeNumbers.length
-      ? String(safeNumbers[Math.floor(Math.random() * safeNumbers.length)])
-      : randomChoice(available)
-    return nextCard
-  }
-
-  // 手札2枚目：打ち消し or 交換を状況で使う
-  if (cpuCardsSoFar.length === 2) {
-    if (available.includes('打ち消し') && Math.random() < 0.6) return '打ち消し'
-    if (available.includes('交換') && Math.random() < 0.3) return '交換'
-
-    const lastSafe = safeNumbers.length
-      ? String(safeNumbers[Math.floor(Math.random() * safeNumbers.length)])
-      : randomChoice(available)
-    return lastSafe
-  }
-
-  // 念のため fallback
-  return randomChoice(available)
-}
-
-function calculateBaseScore(hand) {
-  let total = 0
-  let multiplier = 1
-  for (const card of hand) {
-    if (!isNaN(card)) {
-      total += parseInt(card)
-    } else if (card === 'x2') {
-      multiplier *= 2
-    } else if (card === 'x3') {
-      multiplier *= 3
+    // x2やx3を使ってもバーストしないなら積極的に出す
+    if (magicAvailable.includes('x2')) {
+      const tryScore = simulateScore([...cpuCardsSoFar, 'x2'])
+      if (tryScore <= 21) return 'x2'
     }
+
+    if (magicAvailable.includes('x3')) {
+      const tryScore = simulateScore([...cpuCardsSoFar, 'x3'])
+      if (tryScore <= 21) return 'x3'
+    }
+
+    if (safeNumericCards.length) {
+      // スコア10以上に乗せられそうなカードを優先
+      const goodNums = safeNumericCards.filter(n => simulateScore([...cpuCardsSoFar, String(n)]) >= 10)
+      return String(randomChoice(goodNums.length ? goodNums : safeNumericCards))
+    }
+
+    // 数字が危険 → 打ち消しや交換で逃げ
+    if (magicAvailable.includes('打ち消し')) return '打ち消し'
+    if (magicAvailable.includes('交換')) return '交換'
+
+    return String(randomChoice(numericAvailable.length ? numericAvailable : [1]))
   }
-  return total * multiplier
+
+  // 3枚目（最終判断）：
+  if (cpuCardsSoFar.length === 2) {
+    const candidates = [...numericAvailable.map(n => String(n)), ...magicAvailable]
+
+    // できるだけ高得点を狙うが、バーストは避ける
+    for (const c of candidates.sort(() => Math.random() - 0.5)) {
+      const tryScore = simulateScore([...cpuCardsSoFar, c])
+      if (tryScore <= 21) return c
+    }
+
+    // 全滅 → 交換 or 打ち消しで逃げ道があれば選ぶ
+    if (magicAvailable.includes('交換')) return '交換'
+    if (magicAvailable.includes('打ち消し')) return '打ち消し'
+
+    // 最悪1を出す
+    return '1'
+  }
+
+  return String(randomChoice(numericAvailable.length ? numericAvailable : [1]))
 }
 
 function randomChoice(arr) {
@@ -366,6 +384,23 @@ function handleCardPlay(card) {
   }
 }
 
+function evaluateScore(cards) {
+  let score = 0
+
+  for (const card of cards) {
+    if (!isNaN(card)) {
+      score += Number(card)
+    } else if (card === 'x2') {
+      score *= 2
+    } else if (card === 'x3') {
+      score *= 3
+    }
+    // '交換' や '打ち消し' はここでは考慮しない（別処理）
+  }
+
+  return score
+}
+
 function calculateFinalScores(playerHand, cpuHand) {
   const playerHasNegate = playerHand.includes('打ち消し')
   const cpuHasNegate = cpuHand.includes('打ち消し')
@@ -378,29 +413,14 @@ function calculateFinalScores(playerHand, cpuHand) {
     ? cpuHand.filter(card => !['x2', 'x3', '交換'].includes(card))
     : cpuHand
 
-  function calculateBaseScore(hand) {
-    let total = 0
-    let multiplier = 1
-    for (const card of hand) {
-      if (!isNaN(card)) {
-        total += parseInt(card)
-      } else if (card === 'x2') {
-        multiplier *= 2
-      } else if (card === 'x3') {
-        multiplier *= 3
-      }
-    }
-    return total * multiplier
-  }
-
-  let playerScore = calculateBaseScore(effectivePlayerHand)
-  let cpuScore = calculateBaseScore(effectiveCpuHand)
+  let playerScore = evaluateScore(effectivePlayerHand)
+  let cpuScore = evaluateScore(effectiveCpuHand)
 
   const playerHasSwap = effectivePlayerHand.includes('交換')
   const cpuHasSwap = effectiveCpuHand.includes('交換')
 
   if (playerHasSwap && cpuHasSwap) {
-    // 相殺
+    // 相殺（何もしない）
   } else if (playerHasSwap) {
     [playerScore, cpuScore] = [cpuScore, playerScore]
   } else if (cpuHasSwap) {
